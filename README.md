@@ -1,60 +1,342 @@
-# Project Specification: Ophthalmology Clinical Tutor (Ophtho-Tutor)
+# 🎓 SPS Corps — AI-Powered HR Training System
 
-## 1. Project Vision
-* **Title:** The Ophthalmology Clinical Tutor (Ophtho-Tutor)
-* **Tone:** The Encouraging Expert
-* **Primary Objective:** To provide medical students with a high-fidelity diagnostic simulator for common eye conditions, offering "Diagnostic Post-Mortems" and targeted study resources (mnemonics/videos) upon failure.
+> An intelligent employee training platform that converts HR transcripts into interactive video lessons, Socratic Q&A sessions, and auto-graded quizzes — powered by Groq (Llama 3.1).
 
 ---
 
-## 2. Team Roles & Responsibilities
-| Member | Primary Focus | Key Deliverables |
-| :--- | :--- | :--- |
-| **Raj Singh** | UI & Integration | Streamlit Dashboard, `st.session_state` management, Sidebar controls. |
-| **Vrinda Thakur** | Agent Logic | The "Judge LLM" prompt, Synonym mapping, System persona locking. |
-| **Srishti Srinivasan** | Data & Knowledge | The "Study Vault" JSON, 24 Pathognomonic Fact Sheets (.txt files). |
+## 📋 Table of Contents
+- [Project Overview](#project-overview)
+- [Team & Roles](#team--roles)
+- [How It Works](#how-it-works)
+- [Project Structure](#project-structure)
+- [Setup & Installation](#setup--installation)
+- [Running the Pipeline](#running-the-pipeline)
+- [API Reference](#api-reference)
+- [Environment Variables](#environment-variables)
+- [Dependencies](#dependencies)
+- [Notes](#notes)
 
 ---
 
-## 3. Technical Requirements (Functional)
-1.  **The "Ophtho-Five" Coverage:** The system shall cover Glaucoma, Cataracts, Retinal Detachment, Conjunctivitis, and Macular Degeneration.
-2.  **Dual-Persona Logic:** The AI shall act as a "Patient" (medically illiterate) during the interview and an "Encouraging Expert" during the review.
-3.  **The Judge LLM:** The system shall use an LLM-based verification to check if the student's diagnosis is a semantic match to the ground truth.
-4.  **The Two-Strike Rule:**
-    * *Strike 1:* Provide a "Socratic Hint" (guiding question).
-    * *Strike 2:* Trigger the Diagnostic Post-Mortem and the Study Card.
-5.  **Study Vault (JSON):** The system shall retrieve YouTube links (from Moran CORE/CataractCoach) and mnemonics specific to the identified disease.
-6.  **Pathognomonic Retrieval:** The system shall search the Vector Store for disease-specific clues to provide a "Missed Clues" summary.
+## Project Overview
+
+This system takes a raw HR training transcript (`.txt` file) and automatically:
+
+1. Extracts 3–5 key learning points using an LLM
+2. Converts each learning point into a narrated `.mp4` video slide
+3. Runs an interactive training session — employee watches video, answers a Socratic question, gets nudges if wrong
+4. Ends with a 5-question auto-graded quiz (MCQ, True/False, Short Answer)
+
+**LLM:** Groq API — `llama-3.1-8b-instant` (free, no credit card needed)  
+**TTS/Video:** Kokoro TTS + Pillow + ffmpeg  
+**Interface:** Streamlit (separate module)
 
 ---
 
-## 4. Technical Stack
-* **Interface:** Streamlit (deployed via Google Colab/Local Tunnel).
-* **LLM Engine:** Llama-3.1-8B (via Groq/Ollama for speed).
-* **Vector Database:** FAISS (In-memory storage for 24 case files).
-* **Data Structure:** JSON for study resources; `.txt` for RAG case context.
+## Team & Roles
+
+| Member | Role | Deliverables |
+|---|---|---|
+| **Vrinda Thakur** | AI Architect | LLM integration, prompt engineering, all backend logic |
+| **Raj Singh** | UI & Integration | Streamlit dashboard, session wiring, video player |
+| **Srishti Srinivasan** | Data & Knowledge | Training transcripts, knowledge base content |
 
 ---
 
-## 5. Non-Functional Requirements
-* **Latency:** The Judge LLM and Post-Mortem generation shall respond in **< 4 seconds**.
-* **Privacy/Statelessness:** No user medical inputs shall be stored permanently; all session states reset on browser refresh.
-* **Accuracy:** The Judge LLM must achieve **> 90% accuracy** in synonym matching (e.g., matching "Pink Eye" to "Conjunctivitis").
+## How It Works
+
+```
+HR Transcript (.txt)
+        │
+        ▼
+transcript_reader.py  ──► asks Groq to extract key rules/policies
+        │
+        ▼
+learning_points.json  ──► stores topic + 3-5 learning points
+        │
+        ▼
+video_pipeline.py     ──► generates one .mp4 per learning point
+        │
+        ▼
+socratic_logic.py     ──► manages the employee's training session
+   │         │
+   │         └──► quiz_generator.py  ──► generates & grades final quiz
+   │
+   ▼
+Streamlit UI          ──► employee-facing interface
+```
+
+### Session State Machine
+
+The training session moves through these states:
+
+```
+idle ──► watching ──► questioning ──► (correct) ──► watching (next point)
+                           │                              │
+                      (wrong x1)                   (all points done)
+                           │                              │
+                        nudge 1                        quizzing ──► done
+                           │
+                      (wrong x2)
+                           │
+                        nudge 2
+                           │
+                      (wrong x3)
+                           │
+                     replay video
+```
 
 ---
 
-## 6. Evaluation Plan (10-Scenario Stress Test)
-**Lead:** TBD
+## Project Structure
 
-| # | Scenario | Expected Behavior |
-| :--- | :--- | :--- |
-| 1 | **Classic Presentation** | AI patient accurately describes "halos" for Glaucoma. |
-| 2 | **Synonym Match** | Judge LLM accepts "AMD" as "Macular Degeneration." |
-| 3 | **Strike 1 Logic** | AI gives a hint about "anatomy" without naming the disease. |
-| 4 | **Strike 2 Logic** | AI reveals the Study Card after the second wrong guess. |
-| 5 | **Critical Failure** | AI uses "Clinical Gravity" tone for Retinal Detachment misses. |
-| 6 | **The Distractor** | AI differentiates between viral (watery) and bacterial (sticky) eye. |
-| 7 | **Vague Complaint** | Patient responds to "Tell me more" with a secondary symptom. |
-| 8 | **Empty Guess** | System prevents "Reveal" if no guess has been submitted. |
-| 9 | **Video Integration** | YouTube link correctly renders in the Overlay Card. |
-| 10 | **Session Reset** | "New Case" button successfully clears the FAISS buffer and history. |
+```
+sps_corps_analytics/
+│
+├── .env                      # API keys (never commit this)
+├── .gitignore                # must include .env
+│
+├── prompts.json              # all LLM prompt templates
+├── learning_points.json      # auto-generated by transcript_reader.py
+│
+├── transcript_reader.py      # Step 1: extract learning points from transcript
+├── video_pipeline.py         # Step 2: generate .mp4 videos
+├── socratic_logic.py         # Step 3: run training session (core engine)
+├── quiz_generator.py         # Step 4: generate & grade quiz
+├── text_to_video.py          # helper: TTS + slide image → .mp4
+├── main.py                   # runs Step 1 + Step 2 together
+│
+├── sample.txt                # example HR transcript input
+└── videos/                   # auto-generated video files
+    ├── point_1.mp4
+    ├── point_2.mp4
+    └── point_3.mp4
+```
+
+---
+
+## Setup & Installation
+
+### 1. Clone and set up environment
+
+```bash
+git clone <repo-url>
+cd sps_corps_analytics
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Mac/Linux
+```
+
+### 2. Install dependencies
+
+```bash
+pip install groq python-dotenv kokoro soundfile pillow streamlit
+```
+
+> Also requires **ffmpeg** installed and added to PATH.  
+> Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+
+### 3. Set up `.env`
+
+Create a `.env` file in the project root:
+
+```
+GROQ_API_KEY=your_key_here
+```
+
+Get a free key at [console.groq.com](https://console.groq.com) — no credit card needed.
+
+### 4. Add `.gitignore`
+
+```
+.env
+venv/
+videos/
+__pycache__/
+*.pyc
+```
+
+---
+
+## Running the Pipeline
+
+```bash
+# Run everything at once (extract learning points + generate videos)
+python main.py
+
+# Or run steps individually:
+python transcript_reader.py --file sample.txt --topic "fire safety"
+python video_pipeline.py
+
+# Smoke test the session engine
+python socratic_logic.py
+
+# Smoke test quiz generation
+python quiz_generator.py
+```
+
+---
+
+## API Reference
+
+All backend functions are exposed through `socratic_logic.py` and `quiz_generator.py`. The UI layer imports directly from these modules.
+
+---
+
+### `start_training(session_id, learning_points_path)`
+Kicks off a training session from a saved `learning_points.json` file.
+
+```python
+result = start_training("employee-001")
+# {
+#   "state": "watching",
+#   "video_trigger": True,
+#   "video_path": "videos/point_1.mp4",
+#   "learning_point": "Employees must evacuate immediately...",
+#   "point_number": 1,
+#   "total_points": 3
+# }
+```
+
+---
+
+### `start_training_from_data(session_id, data)`
+Starts a session directly from in-memory data — useful when the UI handles transcript upload.
+
+```python
+data = {"topic": "fire safety", "learning_points": ["Point 1...", "Point 2..."]}
+result = start_training_from_data("employee-001", data)
+```
+
+---
+
+### `video_finished(session_id)`
+Call when the video ends. Returns the Socratic question for the current learning point.
+
+```python
+result = video_finished("employee-001")
+# {
+#   "state": "questioning",
+#   "question": "What would you do when you hear the fire alarm?",
+#   "point_number": 1,
+#   "total_points": 3
+# }
+```
+
+---
+
+### `handle_answer(session_id, answer)`
+Submits the employee's answer. Handles correct/wrong/strike logic automatically.
+
+```python
+result = handle_answer("employee-001", "I would evacuate immediately")
+```
+
+Possible responses:
+
+```python
+# Correct → next video
+{"state": "watching", "video_trigger": True, "video_path": "videos/point_2.mp4"}
+
+# Wrong → nudge hint
+{"state": "questioning", "correct": False, "strike": 1, "message": "Think about what the alarm signals..."}
+
+# 3 strikes → replay video
+{"state": "watching", "correct": False, "strike": 3, "replay": True, "video_path": "videos/point_1.mp4"}
+
+# All points done → quiz ready
+{"state": "ready_to_quiz", "quiz_ready": True, "message": "Great job! Ready for a quiz?"}
+```
+
+---
+
+### `start_quiz(session_id)`
+Begins the final quiz after all learning points are complete.
+
+```python
+result = start_quiz("employee-001")
+# {
+#   "state": "quizzing",
+#   "question_number": 1,
+#   "total_questions": 5,
+#   "question": "What is the first thing you should do when...",
+#   "type": "mcq",
+#   "options": ["A. Call manager", "B. Evacuate", "C. Wait", "D. Check alarm"]
+# }
+```
+
+---
+
+### `submit_quiz_answer(session_id, answer)`
+Submits an answer for the current quiz question.
+
+```python
+# MCQ — pass the letter only
+submit_quiz_answer("employee-001", "B")
+
+# True/False — pass "true" or "false"
+submit_quiz_answer("employee-001", "false")
+
+# Short answer — pass full text
+submit_quiz_answer("employee-001", "I would evacuate and go to the assembly point")
+```
+
+Mid-quiz response:
+```python
+{
+  "feedback": "Correct!",
+  "passed": True,
+  "state": "quizzing",
+  "question_number": 2,
+  "total_questions": 5,
+  "question": "Next question...",
+  "type": "truefalse",
+  "options": None
+}
+```
+
+Final response (after Q5):
+```python
+{
+  "state": "done",
+  "score": "4/5",
+  "passed": 4,
+  "total": 5,
+  "breakdown": [
+    {"question": "...", "passed": True, "feedback": "Correct!"},
+    ...
+  ],
+  "message": "Quiz complete! Training session finished."
+}
+```
+
+---
+
+## Environment Variables
+
+| Variable | Description | Where to get it |
+|---|---|---|
+| `GROQ_API_KEY` | Groq LLM API key | [console.groq.com](https://console.groq.com) — free |
+
+---
+
+## Dependencies
+
+| Package | Purpose |
+|---|---|
+| `groq` | LLM API client |
+| `python-dotenv` | Load `.env` file |
+| `streamlit` | UI framework |
+| `kokoro` | Text-to-speech engine |
+| `soundfile` | Audio file writing |
+| `pillow` | Slide image generation |
+| `ffmpeg` | Merge audio + video into `.mp4` |
+
+---
+
+## Notes
+
+- Videos play correctly from the file system — VS Code's built-in player may not support the codec but desktop playback works fine.
+- The font path in `text_to_video.py` is hardcoded to `C:/Windows/Fonts/arialbd.ttf` — Windows only. Update if deploying on Mac/Linux.
+- Session state resets on page refresh by design — no employee data is stored permanently.
+- Groq free tier: 1,500 requests/day, 15 requests/minute — sufficient for demos and small teams.
